@@ -26,7 +26,6 @@ function generateSummary(data: K6SummaryData): K6Summary {
     const avg = httpDur.avg || 0;
     const p95 = httpDur['p(95)'] || 0;
 
-    // Collect custom trends ending with _ms (e.g., assessment_request_*_ms)
     const customTrends: Array<{ name: string; avg: number; p95: number; count: number }> = [];
     Object.keys(metrics).forEach((key) => {
         if (key === 'http_req_duration' || key === 'http_reqs' || key === 'http_req_failed') return;
@@ -54,7 +53,7 @@ function generateSummary(data: K6SummaryData): K6Summary {
 }
 
 function generateHTMLReport(summary: K6Summary, timestamp: string): string {
-    const passed = summary.failedRate < 0.01; // fail rate < 1%
+    const passed = summary.failedRate < 0.01;
     const statusBadge = passed ? '<span class="badge badge-success">✅ PASSED</span>' : '<span class="badge badge-error">❌ FAILED</span>';
     const trendsRows = summary.trends.map((t) => `
             <tr>

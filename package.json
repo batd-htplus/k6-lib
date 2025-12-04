@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "description": "Universal k6 testing framework for any project",
     "author": "batd@htplus.software",
+    "engines": {
+        "node": ">=18.0.0"
+    },
     "scripts": {
         "clean": "rimraf dist",
         "build": "webpack",

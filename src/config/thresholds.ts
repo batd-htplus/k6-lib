@@ -31,10 +31,25 @@ export const CommonThresholdPresets = {
     } as Thresholds,
 };
 
-export const VUConfig = {
-    auth: {
-        vus: 10,
-        duration: '2m',
+export interface VUConfigItem {
+    vus: number;
+    duration: string;
+}
+
+export interface VUConfigType {
+    smoke?: VUConfigItem;
+    performance?: VUConfigItem;
+    load?: VUConfigItem;
+    stress?: VUConfigItem;
+    spike?: VUConfigItem;
+    soak?: VUConfigItem;
+    auth?: VUConfigItem;
+}
+
+export const VUConfig: Required<VUConfigType> = {
+    smoke: {
+        vus: 5,
+        duration: '1m',
     },
     performance: {
         vus: 50,
@@ -47,6 +62,18 @@ export const VUConfig = {
     stress: {
         vus: 200,
         duration: '15m',
+    },
+    spike: {
+        vus: 500,
+        duration: '10m',
+    },
+    soak: {
+        vus: 50,
+        duration: '2h',
+    },
+    auth: {
+        vus: 10,
+        duration: '2m',
     },
 };
 

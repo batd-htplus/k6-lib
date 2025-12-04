@@ -1,16 +1,6 @@
 # k6 Testing Framework
 
-A comprehensive, production-ready k6 testing framework that simplifies writing and maintaining performance tests. Built with TypeScript for type safety, this framework provides reusable components, utilities, and best practices.
-
-## What is This Framework?
-
-A **universal testing toolkit** for k6 that eliminates boilerplate code and provides:
-
-- **Ready-to-use components** for HTTP requests, authentication, and test data management
-- **Type-safe APIs** with full TypeScript support
-- **Flexible configuration** via environment variables and CSV files
-- **Automatic reporting** with HTML dashboards and detailed metrics
-- **Best practices** built-in for common testing scenarios
+A comprehensive, production-ready k6 testing framework that simplifies writing and maintaining performance tests.
 
 ## Table of Contents
 
@@ -19,11 +9,8 @@ A **universal testing toolkit** for k6 that eliminates boilerplate code and prov
 - [Project Structure](#project-structure)
 - [Core Components](#core-components)
 - [Configuration](#configuration)
-- [Writing Tests](#writing-tests)
 - [Running Tests](#running-tests)
 - [Examples](#examples)
-- [Best Practices](#best-practices)
-- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -31,7 +18,7 @@ A **universal testing toolkit** for k6 that eliminates boilerplate code and prov
 
 ### Prerequisites
 
-- **Node.js**: v14 or higher
+- **Node.js**: v18 or higher (v20+ recommended)
 - **k6**: Installed and available in PATH
 
 ```bash
@@ -126,15 +113,43 @@ k6-lib/
 ├── src/
 │   ├── libs/base/          # Core reusable components
 │   ├── helper/             # Utility functions
-│   ├── config/             # Configuration
+│   ├── config/             # Framework configuration
 │   ├── scenarios/          # Your test files
+│   │   └── my-project/     # Project-specific tests
+│   │       ├── config.ts   # Project configuration
+│   │       ├── helpers.ts  # Shared test helpers (optional)
+│   │       ├── smoke/      # Test scenarios
+│   │       ├── performance/
+│   │       └── load/
 │   ├── types/              # TypeScript definitions
 │   └── reporter.ts         # HTML reporter
 ├── dist/                   # Compiled JavaScript
 ├── results/                # Test results
 ├── env.example             # Environment template
-└── run-k6.sh              # Test runner
+└── run-k6.sh               # Test runner
 ```
+
+### Project Structure Pattern
+
+For projects with multiple tests sharing common logic (auth, CRUD operations), use this pattern:
+
+```
+src/scenarios/my-project/
+├── config.ts          # Project configuration (baseURL, endpoints, testUsers, VUConfig)
+├── helpers.ts         # Shared test functions (login, create, update, delete)
+├── smoke/
+│   └── api.test.ts    # Uses helpers from ../helpers.ts
+├── performance/
+│   └── api.test.ts
+└── load/
+    └── api.test.ts
+```
+
+**Benefits:**
+- Eliminates code duplication across test files
+- Centralized configuration management
+- Easy to maintain and update
+- See `src/scenarios/project_example/` for complete example
 
 ---
 
@@ -160,7 +175,7 @@ const response = httpClient.get('/api/users', {
     headers: { 'Authorization': 'Bearer token' }
 });
 if (httpClient.isSuccess(response)) {
-    const data = response.data; // Parsed JSON
+    const data = response.data;
 }
 ```
 
@@ -221,28 +236,6 @@ export const options = ScenarioBuilder.performance(50, '5m')
     .build();
 ```
 
-### Endpoints
-
-Builders for common API endpoint patterns.
-
-**AuthEndpoints:**
-```typescript
-const authEndpoints = new AuthEndpoints('/auth');
-authEndpoints.login();    // '/auth/login'
-authEndpoints.logout();   // '/auth/logout'
-```
-
-**CRUDEndpoints:**
-```typescript
-const postEndpoints = new CRUDEndpoints('posts', '/api/posts');
-postEndpoints.create();   // POST /api/posts
-postEndpoints.get(123);   // GET /api/posts/123
-postEndpoints.update(123); // PUT /api/posts/123
-postEndpoints.delete(123); // DELETE /api/posts/123
-```
-
----
-
 ## Configuration
 
 ### Environment Variables
@@ -278,50 +271,6 @@ const thresholds = createThresholds({
 **Threshold Format:**
 - `p(95)<1000` - 95th percentile must be less than 1000ms
 - `rate<0.01` - Error rate must be less than 1%
-
----
-
-## Writing Tests
-
-### Basic Structure
-
-1. **Import components** using aliases (`@libs`, `@helper`, `@config`, `@reporter`)
-2. **Initialize components** (HTTP client, auth, test data)
-3. **Define metrics** (trends, rates, counters, gauges)
-4. **Set thresholds** for performance expectations
-5. **Configure options** using ScenarioBuilder
-6. **Write test logic** in default function
-
-### Key Imports
-
-```typescript
-import { ScenarioBuilder } from '@libs/base/scenario-builder';
-import { BaseHTTPClient } from '@libs/base/http-client';
-import { BaseAuth } from '@libs/base/auth';
-import { BaseTestData } from '@libs/base/test-data';
-import { createThresholds } from '@config/thresholds';
-import { createTrend, getResponseDuration } from '@helper/metrics';
-import { isStatus200 } from '@helper/http-check';
-export { handleSummary } from '@reporter';
-```
-
-### Helper Functions
-
-**HTTP Checks:**
-- `isStatus200/201/204(response)` - Check specific status codes
-- `isSuccess(response)` - Check if 2xx
-- `isClientError(response)` - Check if 4xx
-- `isServerError(response)` - Check if 5xx
-
-**Metrics:**
-- `createTrend(name)` - Track durations
-- `createRate(name)` - Track error rates
-- `getResponseDuration(response)` - Get response time in ms
-
-**General:**
-- `randomSleep(min, max)` - Random delay
-- `randomChoice(array)` - Random selection
-- `getEnv(key, defaultValue)` - Get environment variable
 
 ---
 
@@ -375,144 +324,62 @@ results/
 
 ## Examples
 
-See `src/scenarios/project_example/` for complete working examples:
+### Complete Project Example
 
-- **Smoke** (`smoke/post.test.ts`) - Quick validation (5 VUs, 1m)
-- **Performance** (`performance/post.test.ts`) - Baseline (50 VUs, 5m)
-- **Load** (`load/post.test.ts`) - Sustained load (80 VUs, 10m)
-- **Stress** (`stress/post.test.ts`) - Stress testing (200 VUs, 15m)
-- **Spike** (`spike/post.test.ts`) - Spike testing (500 VUs, 10m)
-- **Soak** (`soak/post.test.ts`) - Long-running (50 VUs, 2h)
+See `src/scenarios/project_example/` for a complete working example demonstrating the recommended project structure pattern:
 
-Each example demonstrates:
-- Authentication flow
-- CRUD operations
-- Custom metrics
-- Threshold configuration
-- Error handling
+**Structure:**
+```
+project_example/
+├── config.ts          # Project configuration with VU settings
+├── helpers.ts         # Shared test functions (login, CRUD operations)
+├── smoke/post.test.ts
+├── performance/post.test.ts
+├── load/post.test.ts
+├── stress/post.test.ts
+├── spike/post.test.ts
+└── soak/post.test.ts
+```
 
----
+**Key Features:**
+- **Centralized config** (`config.ts`) - Base URL, endpoints, test users, VU configurations
+- **Shared helpers** (`helpers.ts`) - Reusable functions for login, create, read, update, delete
+- **Clean test files** - Each test file is only ~35 lines, focused on thresholds and test flow
+- **VU configuration** - Each test type can have custom VU settings with fallback to defaults
 
-## Best Practices
-
-### 1. Use Path Aliases
-
-Always use aliases instead of relative paths:
+**Example Test File:**
 ```typescript
-// ✅ Good
+import { group } from 'k6';
 import { ScenarioBuilder } from '@libs/base/scenario-builder';
+import { defaultScenarioOptions, createThresholds, CommonThresholdPresets } from '@config/thresholds';
+import { randomSleep } from '@helper/helpers';
+import { getVUConfig } from '../config';
+import { createTestHelpers, login, createPost, getPost, updatePost, deletePost } from '../helpers';
+export { handleSummary } from '@reporter';
 
-// ❌ Bad
-import { ScenarioBuilder } from '../../../libs/base/scenario-builder';
-```
+const helpers = createTestHelpers();
+const THRESHOLDS = createThresholds({...}, CommonThresholdPresets.api);
+const vuConfig = getVUConfig('smoke');
 
-### 2. Organize by Project
+export const options = ScenarioBuilder.smoke(vuConfig.vus, vuConfig.duration)
+    .setThresholds(THRESHOLDS)
+    .setGlobalOptions(defaultScenarioOptions)
+    .build();
 
-```
-src/scenarios/
-├── project-a/
-│   ├── smoke/
-│   ├── performance/
-│   └── load/
-└── project-b/
-    └── smoke/
-```
-
-### 3. Use Environment Variables
-
-```typescript
-const BASE_URL = k6Env?.BASE_URL || 'http://localhost:3000';
-const user = testData.getTestUser('user');
-```
-
-### 4. Set Appropriate Thresholds
-
-- **Performance/Load tests**: Use strict thresholds (`CommonThresholdPresets.api`)
-- **Stress/Spike tests**: Use relaxed thresholds (`CommonThresholdPresets.relaxed`)
-
-### 5. Don't Logout in Each Iteration
-
-```typescript
 export default function () {
-    const token = login();
-    // ... perform tests
-    // Don't logout here - let tokens expire naturally
+    const token = login(helpers);
+    if (!token) return;
+    
+    group('Post CRUD Tests', () => {
+        const postId = createPost(helpers, token);
+        if (postId) {
+            getPost(helpers, token, postId);
+            updatePost(helpers, token, postId);
+            deletePost(helpers, token, postId);
+        }
+    });
 }
 ```
-
-### 6. Track Custom Metrics
-
-```typescript
-const apiDuration = createTrend('api_duration_ms');
-const errorRate = createRate('api_errors');
-```
-
-### 7. Use Groups for Organization
-
-```typescript
-group('User Management', () => {
-    createUser();
-    getUser();
-    updateUser();
-});
-```
-
-### 8. Add Realistic Delays
-
-```typescript
-import { randomSleep } from '@helper/helpers';
-randomSleep(1, 3);  // Random delay between 1-3 seconds
-```
-
----
-
-## Troubleshooting
-
-### Build Errors
-
-```bash
-npm run clean
-npm run build
-```
-
-**Common causes:** Syntax errors, missing imports, type mismatches
-
-### Authentication Failures
-
-1. Check `TEST_EMAIL` and `TEST_PASSWORD` in `.env`
-2. Verify user exists in system
-3. Check login endpoint path
-4. Verify API server is running
-
-**Debug:**
-```typescript
-console.log('Status:', response.status);
-console.log('Body:', response.body.substring(0, 200));
-```
-
-### Token Blacklist Issues
-
-Don't logout in each iteration. Let tokens expire naturally or logout only in teardown.
-
-### CSV File Not Found
-
-1. Verify `TEST_USER_SOURCE=csv` in `.env`
-2. Check `TEST_USERS_CSV` path is correct
-3. Ensure CSV file exists and is readable
-4. Check CSV format matches expected structure
-
-### High Error Rates
-
-1. Check API server is running
-2. Verify `BASE_URL` is correct
-3. Check network connectivity
-4. Review API logs
-5. Reduce VUs if server is overloaded
-
-### Thresholds Exceeded
-
-- **Stress/Spike tests**: Use `CommonThresholdPresets.relaxed` and adjust custom thresholds
-- **Performance tests**: Check if thresholds are realistic for your system
 
 ---
 

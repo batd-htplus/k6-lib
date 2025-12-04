@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "target": "es2017",
+        "lib": ["es2017"],
+        "module": "commonjs",
+        "strict": true,
+        "outDir": "./dist",
+        "rootDir": ".",
+        "baseUrl": ".",
+        "paths": {
+            "@libs/*": ["./src/libs/*"],
+            "@helper/*": ["./src/helper/*"],
+            "@config/*": ["./src/config/*"],
+            "@types/*": ["./src/types/*"],
+            "@reporter": ["./src/reporter"]
+        },
+        "typeRoots": [
+            "./src/types",
+            "./node_modules/@types"
+        ]
+    },
+    "include": ["src/**/*", "mock/**/*"],
+    "exclude": ["node_modules", "dist"]
+}

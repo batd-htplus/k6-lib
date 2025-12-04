@@ -1,0 +1,30 @@
+{
+    "name": "k6-testing-framework",
+    "version": "1.0.0",
+    "description": "Universal k6 testing framework for any project",
+    "author": "batd@htplus.software",
+    "scripts": {
+        "clean": "rimraf dist",
+        "build": "webpack",
+        "test": "npm run build && bash run-k6.sh"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.27.1",
+        "@babel/preset-env": "^7.27.2",
+        "@babel/preset-typescript": "^7.27.1",
+        "@types/k6": "^1.1.1",
+        "@types/node": "^24.0.12",
+        "@types/bcrypt": "^5.0.0",
+        "babel-loader": "^9.2.1",
+        "rimraf": "^5.0.5",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.8.3",
+        "webpack": "^5.99.9",
+        "webpack-cli": "^5.1.4",
+        "webpack-merge": "^6.0.1",
+        "webpack-node-externals": "^3.0.0"
+    },
+        "dependencies": {
+            "dotenv": "^16.5.0"
+        }
+}

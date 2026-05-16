@@ -3,6 +3,7 @@ import { ScenarioBuilder, defaultScenarioOptions, createThresholds, createTrend,
 import { randomSleep } from '@helper/common';
 import project from '../config';
 export { handleSummary } from '@reporter';
+export function setup() { return project.setup(); }
 
 const trendApiDuration = createTrend('api_duration_ms');
 const rateApiErrors = createRate('api_errors');

@@ -58,12 +58,12 @@ export class RestClient {
         return this.request<T>('DELETE', path, body, options);
     }
     /** Sends a HEAD request. */
-    head(path: string, options?: RequestOptions): Response {
-        return this.request('HEAD', path, undefined, options);
+    head<T = unknown>(path: string, options?: RequestOptions): TypedResponse<T> {
+        return this.request<T>('HEAD', path, undefined, options);
     }
     /** Sends an OPTIONS request. */
-    options(path: string, options?: RequestOptions): Response {
-        return this.request('OPTIONS', path, null, options);
+    options<T = unknown>(path: string, options?: RequestOptions): TypedResponse<T> {
+        return this.request<T>('OPTIONS', path, null, options);
     }
 
     /**
@@ -82,7 +82,12 @@ export class RestClient {
                 method: r.method,
                 url,
                 body: payload,
-                params: { headers, timeout: r.options?.timeout || this.defaultTimeout, tags } as RefinedParams<ResponseType>,
+                params: {
+                    headers,
+                    timeout: r.options?.timeout || this.defaultTimeout,
+                    tags,
+                    ...(r.options?.responseType ? { responseType: r.options.responseType } : {}),
+                } as RefinedParams<ResponseType>,
             };
         });
         return http.batch(items) as unknown as Response[];
@@ -122,6 +127,7 @@ export class RestClient {
             headers,
             timeout: options?.timeout || this.defaultTimeout,
             tags,
+            ...(options?.responseType ? { responseType: options.responseType } : {}),
         };
 
         const payload = this.buildPayload(body);

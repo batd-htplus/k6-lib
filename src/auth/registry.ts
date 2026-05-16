@@ -84,6 +84,13 @@ export class AuthRegistry {
         return tok;
     }
 
+    /** Returns ALL token entries from a named provider's pool (used by setup()). */
+    getAllTokens(name: string): Array<{ user?: TestUser; token: Token }> {
+        const entry = this.entries.get(name);
+        if (!entry?.pool) return [];
+        return entry.pool.getAllEntries();
+    }
+
     /** Handles a 401 response — delegates to the provider's onUnauthorized handler if defined. */
     handleUnauthorized(name: string, user?: TestUser): Token | null {
         const entry = this.entries.get(name);

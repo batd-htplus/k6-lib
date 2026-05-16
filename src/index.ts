@@ -5,7 +5,7 @@ export type {
 export { defineProject } from './config/define-project';
 export { env, envInt, envBool, selectBaseURL } from './config/env';
 
-export type { Thresholds, ThresholdPresetName } from './config/thresholds';
+export type { Thresholds, ThresholdExpression, ThresholdPresetName } from './config/thresholds';
 export {
     CommonThresholdPresets,
     defaultScenarioOptions, mergeThresholds, createThresholds,
@@ -66,3 +66,4 @@ export {
 } from './helper/metrics';
 
 export { check, group, sleep, fail } from 'k6';
+export { default as execution } from 'k6/execution';

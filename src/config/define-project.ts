@@ -44,8 +44,6 @@ export interface ProjectConfig {
 
     /** Default HTTP timeout duration string (e.g. `30s`). */
     defaultTimeout?: string;
-    /** Discard response body after parsing JSON to reduce memory usage. */
-    discardResponseBodies?: boolean;
     /** Default headers attached to every request. */
     defaultHeaders?: Record<string, string>;
 }
@@ -195,7 +193,13 @@ export function defineProject(config: ProjectConfig): ProjectToolkit {
         soak: { vus: 50, duration: '2h' },
         performance: { vus: 50, duration: '5m' },
     };
-    const vu = { ...vuDefaults, ...config.vu };
+    const vu: Record<string, VUConfig> = { ...vuDefaults };
+    if (config.vu) {
+        Object.keys(config.vu).forEach((k) => {
+            const v = config.vu![k];
+            if (v) vu[k] = v;
+        });
+    }
 
     const toolkit: ProjectToolkit = {
         config,
@@ -274,11 +278,10 @@ function runSetup(
         const provider = authMap[name];
         const pool = readPoolConfig(provider);
         if (!pool) return;
-        const userList = users ? users.all().slice() as TestUser[] : [];
-        // Force trigger SharedArray load
+        // Trigger SharedArray load (lazy — executes now during setup(), HTTP is allowed here)
         registry.getToken(name);
-        data.pools[name] = { tokens: [] };
-        void userList; // placeholder — SharedArray loading is handled internally
+        // Populate setup data with real tokens from the pool
+        data.pools[name] = { tokens: registry.getAllTokens(name) };
     });
     return data;
 }

@@ -3,12 +3,13 @@ import { ScenarioBuilder, defaultScenarioOptions, createThresholds, createTrend,
 import { randomSleep } from '@helper/common';
 import project from '../config';
 export { handleSummary } from '@reporter';
+export function setup() { return project.setup(); }
 
 const trendApiDuration = createTrend('api_duration_ms');
 const rateApiErrors = createRate('api_errors');
 
-const { vus, duration } = project.vu.stress;
-export const options = ScenarioBuilder.stress(vus, duration)
+const { vus } = project.vu.stress;
+export const options = ScenarioBuilder.stress(vus)
     .setThresholds(createThresholds({
         'api_duration_ms': ['p(95)<2000'],
         'api_errors': ['rate<0.1'],

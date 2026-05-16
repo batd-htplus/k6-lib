@@ -57,6 +57,15 @@ export class TokenPool {
         }
     }
 
+    /** Returns all entries in the pool. Use during setup() to populate SetupData. */
+    getAllEntries(): PoolEntry[] {
+        const out: PoolEntry[] = [];
+        for (let i = 0; i < this.entries.length; i++) {
+            out.push(this.entries[i]);
+        }
+        return out;
+    }
+
     /** Returns the number of entries in the pool. */
     get size(): number {
         return this.entries.length;

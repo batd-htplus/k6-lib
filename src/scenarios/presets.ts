@@ -6,7 +6,7 @@ export interface ScenarioPreset {
     vus?: number;
     duration?: string;
     stages?: ScenarioConfig['stages'];
-    gracefullStop?: string;
+    gracefulStop?: string;
 }
 
 /** Predefined scenario configurations for common load test patterns (smoke, load, stress, spike, soak, etc.). */

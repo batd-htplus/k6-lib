@@ -21,7 +21,7 @@ export interface ScenarioConfig {
 /** Partial k6 options configuration used to build full k6/options. */
 export interface TestOptionsConfig {
     scenarios?: Record<string, ScenarioConfig>;
-    thresholds?: Record<string, string[]>;
+    thresholds?: Record<string, (string | { threshold: string; abortOnFail?: boolean; delayAbortEval?: string })[]>;
     vus?: number;
     duration?: string;
     iterations?: number;
@@ -87,7 +87,7 @@ export class ScenarioBuilder {
     }
 
     /** Sets threshold expressions for the test. Returns the builder for chaining. */
-    setThresholds(thresholds: Record<string, string[]>): this {
+    setThresholds(thresholds: Record<string, (string | { threshold: string; abortOnFail?: boolean; delayAbortEval?: string })[]>): this {
         this.config.thresholds = thresholds;
         return this;
     }
@@ -125,7 +125,7 @@ export class ScenarioBuilder {
     }
 
     /** Creates a preset stress test scenario with ramping VUs. */
-    static stress(maxVUs: number = 200, duration: string = '15m'): ScenarioBuilder {
+    static stress(maxVUs: number = 200): ScenarioBuilder {
         return new ScenarioBuilder().addRampingVUS('stress', [
             { duration: '2m', target: 50 },
             { duration: '5m', target: 100 },
@@ -135,7 +135,7 @@ export class ScenarioBuilder {
     }
 
     /** Creates a preset spike test scenario with sudden traffic surge. */
-    static spike(maxVUs: number = 500, duration: string = '10m'): ScenarioBuilder {
+    static spike(maxVUs: number = 500): ScenarioBuilder {
         return new ScenarioBuilder().addRampingVUS('spike', [
             { duration: '1m', target: 50 },
             { duration: '30s', target: maxVUs },

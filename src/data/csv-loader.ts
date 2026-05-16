@@ -11,14 +11,13 @@ export function parseCsv(content: string): Record<string, string>[] {
     let inQuote = false;
     for (let i = 0; i < content.length; i++) {
         const c = content[i];
-        if (c === '"') {
-            if (inQuote && content[i + 1] === '"') {
-                cur += '"';
-                i++;
-            } else {
-                inQuote = !inQuote;
-                cur += c;
-            }
+    if (c === '"') {
+        if (inQuote && content[i + 1] === '"') {
+            cur += '"';
+            i++;
+        } else {
+            inQuote = !inQuote;
+        }
         } else if ((c === '\n' || c === '\r') && !inQuote) {
             if (cur.length > 0) {
                 lines.push(cur);
@@ -38,13 +37,14 @@ export function parseCsv(content: string): Record<string, string>[] {
         let q = false;
         for (let i = 0; i < line.length; i++) {
             const c = line[i];
-            if (c === '"') {
-                if (q && line[i + 1] === '"') {
-                    field += '"';
-                    i++;
-                } else {
-                    q = !q;
-                }
+        if (c === '"') {
+            if (q && line[i + 1] === '"') {
+                field += '"';
+                i++;
+            } else {
+                q = !q;
+                continue;
+            }
             } else if (c === ',' && !q) {
                 out.push(field);
                 field = '';

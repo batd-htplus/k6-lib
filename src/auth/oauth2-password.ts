@@ -75,7 +75,7 @@ export class OAuth2PasswordProvider implements IAuthProvider {
             client_id: this.opts.clientId,
         };
         if (this.opts.clientSecret) body.client_secret = this.opts.clientSecret;
-        const form = Object.keys(body).map((k) => `${k}=${encodeURIComponent(body[k])}`).join('&');
+        const form = Object.keys(body).map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(body[k])}`).join('&');
         const res = client.post(this.opts.tokenUrl, form, {
             auth: false,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

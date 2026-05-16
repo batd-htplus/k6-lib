@@ -1,4 +1,6 @@
 import { sleep } from 'k6';
+import { env as getEnv } from '../config/env';
+export { getEnv };
 
 /** Pauses execution for a random duration between min and max seconds (inclusive). */
 export function randomSleep(min: number, max: number): void {
@@ -47,17 +49,6 @@ export function formatDuration(ms: number): string {
     if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
     if (ms < 3600000) return `${(ms / 60000).toFixed(2)}m`;
     return `${(ms / 3600000).toFixed(2)}h`;
-}
-
-/** Reads an environment variable from k6 __ENV or Node.js process.env with an optional fallback default. */
-export function getEnv(key: string, defaultValue?: string): string {
-    const k6Env = (globalThis as { __ENV?: Record<string, string | undefined> }).__ENV;
-    const processEnv = typeof process !== 'undefined' 
-        ? (process as { env?: Record<string, string | undefined> }).env 
-        : undefined;
-    
-    const value = k6Env?.[key] || processEnv?.[key];
-    return value || defaultValue || '';
 }
 
 /** Returns true when running in the k6 Cloud environment (K6_CLOUD=true). */

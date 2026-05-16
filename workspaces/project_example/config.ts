@@ -124,7 +124,4 @@ export default defineProject({
 
     /** HTTP timeout mặc định. */
     defaultTimeout: '30s',
-
-    /** Discard response body sau khi parse JSON (giảm RAM khi chạy stress). */
-    discardResponseBodies: false,
 });

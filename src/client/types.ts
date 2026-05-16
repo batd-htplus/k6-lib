@@ -1,4 +1,4 @@
-import { Response } from 'k6/http';
+import { Response, ResponseType } from 'k6/http';
 
 /** Supported HTTP methods for REST requests. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
@@ -21,6 +21,8 @@ export interface RequestOptions {
     retries?: number;
     /** Base delay between retries in ms. Defaults to 200ms, increases exponentially. */
     retryDelayMs?: number;
+    /** Override body capture mode per request: 'text' or 'binary' to force body retention. */
+    responseType?: ResponseType;
 }
 
 /** A Response extended with a typed parsed JSON body. */

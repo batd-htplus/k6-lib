@@ -4,6 +4,7 @@ import { randomSleep } from '@helper/common';
 import project from '../config';
 import { createApi } from '../generated/api';
 export { handleSummary } from '@reporter';
+export function setup() { return project.setup(); }
 
 const api = createApi(project.http);
 const trendApiDuration = createTrend('api_duration_ms');

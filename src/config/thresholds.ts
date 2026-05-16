@@ -1,5 +1,8 @@
+/** A single threshold expression — supports both short and long k6 formats. */
+export type ThresholdExpression = string | { threshold: string; abortOnFail?: boolean; delayAbortEval?: string };
+
 /** A map of metric names to their threshold expressions (e.g. `{ "http_req_duration": ["p(95)<500"] }`). */
-export type Thresholds = Record<string, string[]>;
+export type Thresholds = Record<string, ThresholdExpression[]>;
 
 /** Sensible defaults for k6 scenario options. */
 export const defaultScenarioOptions = {
@@ -75,11 +78,11 @@ export function createThresholds(
 export function addMetricToPreset(
     preset: Thresholds,
     metricName: string,
-    thresholdStrings: string[]
+    expressions: ThresholdExpression[]
 ): Thresholds {
     return {
         ...preset,
-        [metricName]: thresholdStrings,
+        [metricName]: expressions,
     };
 }
 

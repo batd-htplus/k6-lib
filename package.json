@@ -1,23 +1,45 @@
 {
-    "name": "k6-testing-framework",
-    "version": "1.0.0",
-    "description": "Universal k6 testing framework for any project",
+    "name": "@htplus/k6-lib",
+    "version": "0.1.0",
+    "description": "Internal k6 performance testing library — REST + WebSocket, OpenAPI codegen, multi-auth.",
     "author": "batd@htplus.software",
+    "license": "UNLICENSED",
     "engines": {
         "node": ">=18.0.0"
     },
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./reporter": {
+            "types": "./dist/reporter/index.d.ts",
+            "default": "./dist/reporter/index.js"
+        }
+    },
+    "bin": {
+        "k6-lib": "dist/cli/index.js"
+    },
+    "files": [
+        "dist/",
+        "README.md",
+        "ARCHITECTURE.md"
+    ],
     "scripts": {
         "clean": "rimraf dist",
         "build": "webpack",
+        "build:lib": "tsc -p tsconfig.lib.json",
         "test": "npm run build && bash run-k6.sh"
     },
     "devDependencies": {
         "@babel/core": "^7.27.1",
         "@babel/preset-env": "^7.27.2",
         "@babel/preset-typescript": "^7.27.1",
+        "@types/bcrypt": "^5.0.0",
         "@types/k6": "^1.1.1",
         "@types/node": "^24.0.12",
-        "@types/bcrypt": "^5.0.0",
         "babel-loader": "^9.2.1",
         "rimraf": "^5.0.5",
         "ts-node": "^10.9.2",
@@ -27,7 +49,8 @@
         "webpack-merge": "^6.0.1",
         "webpack-node-externals": "^3.0.0"
     },
-        "dependencies": {
-            "dotenv": "^16.5.0"
-        }
+    "dependencies": {
+        "dotenv": "^16.5.0",
+        "js-yaml": "^4.1.1"
+    }
 }

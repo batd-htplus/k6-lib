@@ -2,52 +2,56 @@ const path = require('path');
 const fs = require('fs');
 const webpack = require('webpack');
 
-const scenariosDir = path.resolve(__dirname, 'src/scenarios');
-
-function findTestFiles(dir, basePath = '') {
+function findTestFiles(dir, entryPrefix = '') {
     const entries = {};
     if (!fs.existsSync(dir)) {
         return entries;
     }
-    
-    try {
-        const files = fs.readdirSync(dir);
-        
-        files.forEach(file => {
-            const fullPath = path.join(dir, file);
-            try {
-                const stat = fs.statSync(fullPath);
-                
-                if (stat.isDirectory()) {
-                    const subEntries = findTestFiles(fullPath, path.join(basePath, file));
-                    Object.assign(entries, subEntries);
-                } else if (file.endsWith('.test.ts')) {
-                    const relativePath = basePath ? path.join(basePath, file) : file;
-                    const entryKey = relativePath.replace(/\.ts$/, '').replace(/\\/g, '/');
-                    entries[`scenarios/${entryKey}`] = `./src/scenarios/${relativePath.replace(/\\/g, '/')}`;
+
+    function scan(currentDir, relativePath = '') {
+        try {
+            const files = fs.readdirSync(currentDir);
+            files.forEach((file) => {
+                const fullPath = path.join(currentDir, file);
+                try {
+                    const stat = fs.statSync(fullPath);
+                    if (stat.isDirectory()) {
+                        scan(fullPath, path.join(relativePath, file));
+                    } else if (file.endsWith('.test.ts')) {
+                        const key = path.join(entryPrefix, relativePath, file.replace(/\.ts$/, '')).replace(/\\/g, '/');
+                        entries[key] = fullPath;
+                    }
+                } catch (err) {
+                    console.warn(`Warning: Could not process ${fullPath}: ${err.message}`);
                 }
-            } catch (err) {
-                console.warn(`Warning: Could not process ${fullPath}: ${err.message}`);
-            }
-        });
-    } catch (err) {
-        console.warn(`Warning: Could not read directory ${dir}: ${err.message}`);
+            });
+        } catch (err) {
+            console.warn(`Warning: Could not read directory ${currentDir}: ${err.message}`);
+        }
     }
-    
+
+    scan(dir);
     return entries;
 }
 
-const entries = findTestFiles(scenariosDir);
+const scenariosDir = path.resolve(__dirname, 'src/scenarios');
+const workspacesDir = path.resolve(__dirname, 'workspaces');
+
+const entries = {
+    ...findTestFiles(scenariosDir, 'scenarios'),
+    ...findTestFiles(workspacesDir, 'scenarios'),
+};
 
 module.exports = {
     mode: 'development',
+    devtool: false,    // k6 (goja) không hỗ trợ eval
     entry: entries,
-    target: 'node', 
+    target: 'node',
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: '[name].js',
         libraryTarget: 'commonjs',
-        globalObject: 'this'
+        globalObject: 'this',
     },
     module: {
         rules: [
@@ -59,25 +63,31 @@ module.exports = {
                     options: {
                         presets: [
                             ['@babel/preset-env', { targets: { node: 'current' } }],
-                            '@babel/preset-typescript'
-                        ]
-                    }
-                }
+                            '@babel/preset-typescript',
+                        ],
+                    },
+                },
             },
             {
                 test: /\.json$/,
-                type: 'json'
-            }
-        ]
+                type: 'json',
+            },
+        ],
     },
     resolve: {
         extensions: ['.ts', '.js'],
         alias: {
-            '@libs': path.resolve(__dirname, 'src/libs'),
             '@helper': path.resolve(__dirname, 'src/helper'),
             '@config': path.resolve(__dirname, 'src/config'),
             '@types': path.resolve(__dirname, 'src/types'),
-            '@reporter': path.resolve(__dirname, 'src/reporter.ts')
+            '@reporter': path.resolve(__dirname, 'src/reporter/index.ts'),
+            '@client': path.resolve(__dirname, 'src/client'),
+            '@auth': path.resolve(__dirname, 'src/auth'),
+            '@data': path.resolve(__dirname, 'src/data'),
+            '@scenarios': path.resolve(__dirname, 'src/scenarios'),
+            '@openapi': path.resolve(__dirname, 'src/openapi'),
+            '@htplus/k6-lib': path.resolve(__dirname, 'src/index.ts'),
+            '@htplus/k6-lib/reporter': path.resolve(__dirname, 'src/reporter/index.ts'),
         },
         fallback: {
             fs: false,
@@ -86,8 +96,8 @@ module.exports = {
             util: false,
             stream: false,
             buffer: false,
-            process: false
-        }
+            process: false,
+        },
     },
     externals: [
         /^k6(\/.*)?/,
@@ -97,15 +107,15 @@ module.exports = {
         'crypto',
         'stream',
         'buffer',
-        'util'
+        'util',
     ],
     plugins: [
         new webpack.EnvironmentPlugin({
             NODE_ENV: 'development',
-            K6_CLOUD: false
+            K6_CLOUD: false,
         }),
         new webpack.DefinePlugin({
-            'process.env': JSON.stringify(process.env)
-        })
-    ]
+            'process.env': JSON.stringify(process.env),
+        }),
+    ],
 };

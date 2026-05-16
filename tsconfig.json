@@ -10,17 +10,23 @@
         "rootDir": ".",
         "baseUrl": ".",
         "paths": {
-            "@libs/*": ["./src/libs/*"],
             "@helper/*": ["./src/helper/*"],
             "@config/*": ["./src/config/*"],
             "@types/*": ["./src/types/*"],
-            "@reporter": ["./src/reporter"]
+            "@reporter": ["./src/reporter"],
+            "@client/*": ["./src/client/*"],
+            "@auth/*": ["./src/auth/*"],
+            "@data/*": ["./src/data/*"],
+            "@scenarios/*": ["./src/scenarios/*"],
+            "@openapi/*": ["./src/openapi/*"],
+            "@htplus/k6-lib": ["./src/index"],
+            "@htplus/k6-lib/reporter": ["./src/reporter/index"]
         },
         "typeRoots": [
             "./src/types",
             "./node_modules/@types"
         ]
     },
-    "include": ["src/**/*", "mock/**/*"],
+    "include": ["src/**/*", "mock/**/*", "workspaces/**/*"],
     "exclude": ["node_modules", "dist"]
 }

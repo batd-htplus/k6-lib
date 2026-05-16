@@ -2,11 +2,12 @@
  * Common Type Definitions
  */
 
-// Environment variables
+/** k6 environment variables dictionary. */
 export interface K6Env {
     [key: string]: string | undefined;
 }
 
+/** Node.js process environment variables dictionary. */
 export interface ProcessEnv {
     [key: string]: string | undefined;
 }
@@ -17,7 +18,7 @@ declare global {
     }
 }
 
-// Response types
+/** Represents an HTTP response from a k6 HTTP request. */
 export interface K6Response {
     status: number;
     body: string;
@@ -31,7 +32,7 @@ export interface K6Response {
     json?(): unknown;
 }
 
-// k6 Summary Data types
+/** Statistical values for a k6 metric (count, rate, avg, percentiles). */
 export interface K6MetricValues {
     count?: number;
     rate?: number;
@@ -45,10 +46,12 @@ export interface K6MetricValues {
     [key: string]: number | undefined;
 }
 
+/** A single k6 metric containing its statistical values. */
 export interface K6Metric {
     values: K6MetricValues;
 }
 
+/** Raw summary data structure produced by k6 at the end of a test run. */
 export interface K6SummaryData {
     metrics?: Record<string, K6Metric>;
     state?: {
@@ -57,6 +60,7 @@ export interface K6SummaryData {
     };
 }
 
+/** Simplified, human-readable summary of k6 test results. */
 export interface K6Summary {
     testDuration: number;
     totalRequests: number;
@@ -73,8 +77,10 @@ export interface K6Summary {
     }>;
 }
 
-// Generic types
+/** Generic record with unknown values. */
 export type UnknownRecord = Record<string, unknown>;
+/** Generic record with string values. */
 export type StringRecord = Record<string, string>;
+/** Placeholder for an unknown value type. */
 export type UnknownValue = unknown;
 

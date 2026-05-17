@@ -1,5 +1,5 @@
 import { group } from 'k6';
-import { ScenarioBuilder, defaultScenarioOptions, createThresholds, createTrend, createRate } from '@htplus/k6-lib';
+import { ScenarioBuilder, defaultScenarioOptions, createThresholds, createTrend, createRate, SetupData } from '@htplus/k6-lib';
 import { randomSleep } from '@helper/common';
 import project from '../config';
 export { handleSummary } from '@reporter';
@@ -17,16 +17,14 @@ export const options = ScenarioBuilder.stress(vus)
     .setGlobalOptions(defaultScenarioOptions)
     .build();
 
-export default function () {
+export default function (data: unknown) {
+    project.applySetupData(data as SetupData);
     group('Post CRUD', () => {
         const created = project.http.post('/posts', { title: `Test ${Date.now()}`, content: 'test' }, { auth: 'user' });
         project.check(created, 201);
         trendApiDuration.add(created.timings?.duration || 0);
         const id = project.extract(created, 'data.id') as number;
         if (!id) { rateApiErrors.add(true); return; }
-
-        const got = project.http.get(`/posts/${id}`, { auth: 'user' });
-        trendApiDuration.add(got.timings?.duration || 0);
 
         const updated = project.http.put(`/posts/${id}`, { title: 'updated', content: 'test' }, { auth: 'user' });
         trendApiDuration.add(updated.timings?.duration || 0);

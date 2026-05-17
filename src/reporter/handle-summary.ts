@@ -14,15 +14,16 @@ export function handleSummary(data: K6SummaryData): Record<string, string> {
     const processEnv = typeof process !== 'undefined'
         ? (process as { env?: Record<string, string | undefined> }).env
         : undefined;
-    const outDir = k6Env?.K6_SUMMARY_DIR || processEnv?.K6_SUMMARY_DIR || 'reports';
-    const testName = k6Env?.K6_TEST_NAME || 'k6-test';
-    return {
-        'stdout': textReport,
-        [`${outDir}/k6-report-${timestamp}.html`]: htmlReport,
-        [`${outDir}/k6-report-${timestamp}.json`]: JSON.stringify(data, null, 2),
-        [`${outDir}/latest-k6-report.html`]: htmlReport,
-        [`${outDir}/junit.xml`]: generateJUnitXml(data, testName),
-    };
+    const outDir = k6Env?.K6_SUMMARY_DIR || processEnv?.K6_SUMMARY_DIR;
+    const outputs: Record<string, string> = { 'stdout': textReport };
+    if (outDir) {
+        const testName = k6Env?.K6_TEST_NAME || 'k6-test';
+        outputs[`${outDir}/k6-report-${timestamp}.html`] = htmlReport;
+        outputs[`${outDir}/k6-report-${timestamp}.json`] = JSON.stringify(data, null, 2);
+        outputs[`${outDir}/latest-k6-report.html`] = htmlReport;
+        outputs[`${outDir}/junit.xml`] = generateJUnitXml(data, testName);
+    }
+    return outputs;
 }
 
 /**

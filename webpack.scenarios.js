@@ -44,7 +44,7 @@ const entries = {
 
 module.exports = {
     mode: 'development',
-    devtool: false,    // k6 (goja) không hỗ trợ eval
+    devtool: false,    // k6 (goja)
     entry: entries,
     target: 'node',
     output: {

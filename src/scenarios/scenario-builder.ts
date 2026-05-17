@@ -1,9 +1,12 @@
 import type { Options } from 'k6/options';
+import { ScenarioPresets } from './presets';
+
+export type ExecutorType = 'constant-vus' | 'ramping-vus' | 'shared-iterations' | 'per-vu-iterations' | 'constant-arrival-rate' | 'ramping-arrival-rate';
 
 /** Configuration for a single k6 scenario, supporting all built-in executors. */
 export interface ScenarioConfig {
     name: string;
-    executor: 'constant-vus' | 'ramping-vus' | 'shared-iterations' | 'per-vu-iterations' | 'constant-arrival-rate' | 'ramping-arrival-rate';
+    executor: ExecutorType;
     vus?: number;
     duration?: string;
     iterations?: number;
@@ -114,74 +117,72 @@ export class ScenarioBuilder {
         return options;
     }
 
+    /** Creates a preset smoke test scenario with minimal load. */
+    static smoke(vus?: number, duration?: string): ScenarioBuilder {
+        const p = ScenarioPresets.smoke;
+        return new ScenarioBuilder().addConstantVUS('smoke', vus ?? p.vus!, duration ?? p.duration!, { gracefulStop: p.gracefulStop });
+    }
+
     /** Creates a preset performance test scenario. */
-    static performance(vus: number = 50, duration: string = '5m'): ScenarioBuilder {
-        return new ScenarioBuilder().addConstantVUS('performance', vus, duration, { gracefulStop: '30s' });
+    static performance(vus?: number, duration?: string): ScenarioBuilder {
+        const p = ScenarioPresets.performance;
+        return new ScenarioBuilder().addConstantVUS('performance', vus ?? p.vus!, duration ?? p.duration!, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset load test scenario. */
-    static load(vus: number = 80, duration: string = '10m'): ScenarioBuilder {
-        return new ScenarioBuilder().addConstantVUS('load', vus, duration, { gracefulStop: '30s' });
+    static load(vus?: number, duration?: string): ScenarioBuilder {
+        const p = ScenarioPresets.load;
+        return new ScenarioBuilder().addConstantVUS('load', vus ?? p.vus!, duration ?? p.duration!, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset stress test scenario with ramping VUs. */
-    static stress(maxVUs: number = 200): ScenarioBuilder {
-        return new ScenarioBuilder().addRampingVUS('stress', [
-            { duration: '2m', target: 50 },
-            { duration: '5m', target: 100 },
-            { duration: '5m', target: maxVUs },
-            { duration: '3m', target: 0 },
-        ], { gracefulStop: '30s' });
+    static stress(maxVUs?: number): ScenarioBuilder {
+        const p = ScenarioPresets.stress;
+        const stages = p.stages!.map((s, i) => (i === 2) ? { ...s, target: maxVUs ?? s.target } : s);
+        return new ScenarioBuilder().addRampingVUS('stress', stages, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset spike test scenario with sudden traffic surge. */
-    static spike(maxVUs: number = 500): ScenarioBuilder {
-        return new ScenarioBuilder().addRampingVUS('spike', [
-            { duration: '1m', target: 50 },
-            { duration: '30s', target: maxVUs },
-            { duration: '1m', target: maxVUs },
-            { duration: '30s', target: 50 },
-            { duration: '7m', target: 50 },
-        ], { gracefulStop: '30s' });
-    }
-
-    /** Creates a combined preset with concurrent performance and load scenarios. */
-    static combined(performanceVUs: number = 50, loadVUs: number = 80): ScenarioBuilder {
-        return new ScenarioBuilder()
-            .addConstantVUS('performance', performanceVUs, '5m', { gracefulStop: '30s' })
-            .addConstantVUS('load', loadVUs, '10m', { gracefulStop: '30s' });
+    static spike(maxVUs?: number): ScenarioBuilder {
+        const p = ScenarioPresets.spike;
+        const stages = p.stages!.map((s, i) => (i === 1 || i === 2) ? { ...s, target: maxVUs ?? s.target } : s);
+        return new ScenarioBuilder().addRampingVUS('spike', stages, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset soak (endurance) test scenario. */
-    static soak(vus: number = 50, duration: string = '2h'): ScenarioBuilder {
-        return new ScenarioBuilder().addConstantVUS('soak', vus, duration, { gracefulStop: '1m' });
+    static soak(vus?: number, duration?: string): ScenarioBuilder {
+        const p = ScenarioPresets.soak;
+        return new ScenarioBuilder().addConstantVUS('soak', vus ?? p.vus!, duration ?? p.duration!, { gracefulStop: p.gracefulStop });
     }
 
-    /** Creates a preset smoke test scenario with minimal load. */
-    static smoke(vus: number = 5, duration: string = '1m'): ScenarioBuilder {
-        return new ScenarioBuilder().addConstantVUS('smoke', vus, duration, { gracefulStop: '10s' });
+    /** Creates a combined preset with concurrent performance and load scenarios. */
+    static combined(performanceVUs?: number, loadVUs?: number): ScenarioBuilder {
+        const pp = ScenarioPresets.performance;
+        const lp = ScenarioPresets.load;
+        return new ScenarioBuilder()
+            .addConstantVUS('performance', performanceVUs ?? pp.vus!, pp.duration!, { gracefulStop: pp.gracefulStop })
+            .addConstantVUS('load', loadVUs ?? lp.vus!, lp.duration!, { gracefulStop: lp.gracefulStop });
     }
 
     /** Creates a preset volume test scenario with shared iterations. */
-    static volume(iterations: number = 10000, vus: number = 100): ScenarioBuilder {
-        return new ScenarioBuilder().addSharedIterations('volume', iterations, vus, { gracefulStop: '30s' });
+    static volume(iterations?: number, vus?: number): ScenarioBuilder {
+        const p = ScenarioPresets.volume;
+        return new ScenarioBuilder().addSharedIterations('volume', iterations ?? p.iterations!, vus ?? p.vus!, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset capacity test scenario with ramping VUs. */
-    static capacity(maxVUs: number = 1000, duration: string = '30m'): ScenarioBuilder {
-        return new ScenarioBuilder().addRampingVUS('capacity', [
-            { duration: '5m', target: 100 },
-            { duration: '10m', target: 500 },
-            { duration: '10m', target: maxVUs },
-            { duration: '5m', target: 0 },
-        ], { gracefulStop: '1m' });
+    static capacity(maxVUs?: number): ScenarioBuilder {
+        const p = ScenarioPresets.capacity;
+        const stages = p.stages!.map((s, i) => (i === 2) ? { ...s, target: maxVUs ?? s.target } : s);
+        return new ScenarioBuilder().addRampingVUS('capacity', stages, { gracefulStop: p.gracefulStop });
     }
 
     /** Creates a preset throughput test scenario with constant arrival rate. */
-    static throughput(rate: number = 1000, duration: string = '5m', timeUnit: string = '1s'): ScenarioBuilder {
-        return new ScenarioBuilder().addConstantArrivalRate('throughput', rate, duration, timeUnit, {
+    static throughput(rate?: number, duration?: string, timeUnit?: string): ScenarioBuilder {
+        const p = ScenarioPresets.throughput;
+        return new ScenarioBuilder().addConstantArrivalRate('throughput', rate ?? p.rate!, duration ?? p.duration!, timeUnit ?? p.timeUnit!, {
             preAllocatedVUs: 20,
-            maxVUs: rate * 2,
+            maxVUs: (rate ?? p.rate!) * 2,
         });
     }
 }

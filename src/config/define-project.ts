@@ -4,11 +4,12 @@ import { RestClient } from '../client/rest-client';
 import { WsClient, WsClientConfig } from '../client/ws-client';
 import { AuthRegistry } from '../auth/registry';
 import { IAuthProvider, PoolConfig, TestUser, Token } from '../auth/types';
-import { TokenPool, buildPoolEntries } from '../auth/token-pool';
+import { TokenPool, buildPoolEntries, PoolEntry } from '../auth/token-pool';
 import { IDataSet, SharedDataSet } from '../data/data-set';
 import { extractByPath } from '../auth/utils';
 import { CommonThresholdPresets, ThresholdPresetName, Thresholds } from './thresholds';
 import { selectBaseURL, env as envFn } from './env';
+import { ScenarioPresets } from '../scenarios/presets';
 
 /** A single VU configuration for a test type (e.g. smoke, load, …). */
 export interface VUConfig {
@@ -84,6 +85,11 @@ export interface ProjectToolkit {
     extract: <T = unknown>(res: Response, path: string) => T | undefined;
     /** Setup function to be called inside the k6 `export function setup()`. */
     setup: () => SetupData;
+    /**
+     * Apply setup data to the local VU isolate's token pools.
+     * Call this at the top of `default(data)` to load pre-acquired tokens.
+     */
+    applySetupData: (data: SetupData) => void;
     /** Read an environment variable (k6 `__ENV` first, then `process.env`). */
     env: (key: string, def?: string) => string;
 }
@@ -98,7 +104,11 @@ export interface CheckSpec {
     checks?: Record<string, (res: Response) => boolean>;
 }
 
-/** Data returned by the setup phase, containing pre-acquired token pools for each named auth provider. */
+/**
+ * Data returned by the setup phase, containing pre-acquired token pools for each named auth provider.
+ * Passed to `default(data)` by k6; call `project.applySetupData(data)` at the top of VU code
+ * to populate the local TokenPool instances in each VU isolate.
+ */
 export interface SetupData {
     pools: Record<string, { tokens: Array<{ user?: TestUser; token: Token }> }>;
 }
@@ -147,15 +157,12 @@ export function defineProject(config: ProjectConfig): ProjectToolkit {
         }
     }
 
-    // Register each provider; build token pool when configured
+    // Register each provider; create token pool shell (populated later in setup())
     Object.keys(authMap).forEach((name) => {
         const provider = authMap[name];
         const pool = readPoolConfig(provider);
         if (pool && users) {
-            const tokenPool = new TokenPool(name, pool, () => {
-                const allUsers = (users as IDataSet<TestUser>).all().slice() as TestUser[];
-                return buildPoolEntries(provider, http, allUsers, pool.size);
-            });
+            const tokenPool = new TokenPool(pool);
             registry.register(name, provider, tokenPool);
         } else {
             registry.register(name, provider);
@@ -184,14 +191,14 @@ export function defineProject(config: ProjectConfig): ProjectToolkit {
         ? CommonThresholdPresets[config.thresholds]
         : (config.thresholds || CommonThresholdPresets.api);
 
-    // Resolve VU config — merge project overrides with defaults
+    // Resolve VU config — merge project overrides with defaults from ScenarioPresets
     const vuDefaults: Record<string, VUConfig> = {
-        smoke: { vus: 5, duration: '1m' },
-        load: { vus: 80, duration: '10m' },
+        smoke: { vus: ScenarioPresets.smoke.vus!, duration: ScenarioPresets.smoke.duration! },
+        load: { vus: ScenarioPresets.load.vus!, duration: ScenarioPresets.load.duration! },
         stress: { vus: 200, duration: '15m' },
         spike: { vus: 500, duration: '10m' },
-        soak: { vus: 50, duration: '2h' },
-        performance: { vus: 50, duration: '5m' },
+        soak: { vus: ScenarioPresets.soak.vus!, duration: ScenarioPresets.soak.duration! },
+        performance: { vus: ScenarioPresets.performance.vus!, duration: ScenarioPresets.performance.duration! },
     };
     const vu: Record<string, VUConfig> = { ...vuDefaults };
     if (config.vu) {
@@ -213,6 +220,14 @@ export function defineProject(config: ProjectConfig): ProjectToolkit {
         check: (res, expected) => runCheck(res, expected),
         extract: <T = unknown>(res: Response, path: string) => extractFromResponse<T>(res, path),
         setup: () => runSetup(registry, authMap, users),
+        applySetupData: (data: SetupData) => {
+            Object.keys(data.pools).forEach((name) => {
+                const pool = registry.getPool(name);
+                if (pool) {
+                    pool.load(data.pools[name].tokens);
+                }
+            });
+        },
         env: envFn,
     };
     return toolkit;
@@ -267,7 +282,7 @@ function extractFromResponse<T = unknown>(res: Response, path: string): T | unde
     }
 }
 
-/** Build the `SetupData` object by iterating auth providers and triggering token acquisition for pooled providers. */
+/** Build the `SetupData` object by pre-logging all pool users during setup() where HTTP is allowed. */
 function runSetup(
     registry: AuthRegistry,
     authMap: Record<string, IAuthProvider>,
@@ -276,12 +291,27 @@ function runSetup(
     const data: SetupData = { pools: {} };
     Object.keys(authMap).forEach((name) => {
         const provider = authMap[name];
-        const pool = readPoolConfig(provider);
-        if (!pool) return;
-        // Trigger SharedArray load (lazy — executes now during setup(), HTTP is allowed here)
-        registry.getToken(name);
-        // Populate setup data with real tokens from the pool
-        data.pools[name] = { tokens: registry.getAllTokens(name) };
+        const poolCfg = readPoolConfig(provider);
+        if (!poolCfg) return;
+
+        if (users) {
+            const allData = users.all();
+            const allUsers: TestUser[] = [];
+            const len = (allData as unknown as { length: number }).length;
+            for (let i = 0; i < len; i++) {
+                const u = allData[i] as TestUser;
+                if (u) allUsers.push(u);
+            }
+            const entries = buildPoolEntries(provider, registry.getClient(), allUsers, poolCfg.size);
+            data.pools[name] = { tokens: entries };
+            const tokenPool = registry.getPool(name);
+            if (tokenPool) tokenPool.load(entries);
+        } else {
+            const entries = buildPoolEntries(provider, registry.getClient(), [], poolCfg.size);
+            data.pools[name] = { tokens: entries };
+            const tokenPool = registry.getPool(name);
+            if (tokenPool) tokenPool.load(entries);
+        }
     });
     return data;
 }

@@ -1,41 +1,40 @@
-import { SharedArray } from 'k6/data';
 import { RestClient } from '../client/rest-client';
 import { IAuthProvider, PoolConfig, TestUser, Token } from './types';
 
-interface PoolEntry {
+/** A single entry in the token pool: an optional user reference and their pre-acquired token. */
+export interface PoolEntry {
     user?: TestUser;
     token: Token;
 }
 
-type SharedArrayLike<T> = { readonly length: number; readonly [index: number]: T };
-
 /**
- * Pre-login N users during setup() and shares tokens across VUs via SharedArray.
+ * Token pool that assigns one pre-logged-in user per VU.
  *
- * 🛑 IMPORTANT: Mỗi VU được gán **một token cố định** trong suốt vòng đời của nó.
- * Không pick token mới cho mỗi request — tránh lẫn data giữa các user.
- *
- * Rotation strategy chỉ ảnh hưởng đến cách phân bổ VU → token lúc ban đầu:
- * - `round-robin`: VU 1→token[0], VU 2→token[1], … (mặc định)
- * - `per-vu`: tương tự round-robin
- * - `random`: VU → token ngẫu nhiên
+ * Tokens must be loaded before VU execution via `load()` (call from setup() where HTTP is allowed).
+ * Rotation strategy only affects the initial VU→token mapping:
+ * - `round-robin`: VU 1→token[0], VU 2→token[1], … (default)
+ * - `per-vu`: same as round-robin
+ * - `random`: VU→random token
  */
 export class TokenPool {
-    private entries: SharedArrayLike<PoolEntry>;
+    private entries: PoolEntry[] = [];
     private rotation: NonNullable<PoolConfig['rotation']>;
 
-    constructor(
-        name: string,
-        config: PoolConfig,
-        loader: () => PoolEntry[]
-    ) {
+    constructor(config: PoolConfig) {
         this.rotation = config.rotation || 'round-robin';
-        this.entries = new SharedArray<PoolEntry>(`token-pool:${name}`, loader) as unknown as SharedArrayLike<PoolEntry>;
     }
 
     /**
-     * Trả về token gán cho VU hiện tại.
-     * Kết quả được cache theo `__VU` để mọi request trong cùng VU dùng chung một user.
+     * Populate the pool with token entries. Must be called during setup()
+     * (HTTP is allowed there). Safe to call multiple times — replaces entries.
+     */
+    load(entries: PoolEntry[]): void {
+        this.entries = entries;
+    }
+
+    /**
+     * Returns the token assigned to the current VU.
+     * Each VU keeps the same token for its entire lifetime.
      */
     pick(): PoolEntry | null {
         if (this.entries.length === 0) return null;
@@ -44,11 +43,9 @@ export class TokenPool {
         return this.entries[idx % this.entries.length];
     }
 
-    /** Xác định index trong pool dựa trên VU number. */
     private resolveIndex(vu: number): number {
         switch (this.rotation) {
             case 'random':
-                // Seed giả định theo VU để phân bố đều
                 return ((vu * 2654435761) >>> 0) % this.entries.length;
             case 'round-robin':
             case 'per-vu':
@@ -57,13 +54,9 @@ export class TokenPool {
         }
     }
 
-    /** Returns all entries in the pool. Use during setup() to populate SetupData. */
+    /** Returns all entries in the pool. */
     getAllEntries(): PoolEntry[] {
-        const out: PoolEntry[] = [];
-        for (let i = 0; i < this.entries.length; i++) {
-            out.push(this.entries[i]);
-        }
-        return out;
+        return this.entries.slice();
     }
 
     /** Returns the number of entries in the pool. */

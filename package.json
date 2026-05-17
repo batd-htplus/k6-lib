@@ -28,10 +28,9 @@
         "ARCHITECTURE.md"
     ],
     "scripts": {
-        "clean": "rimraf dist",
-        "build": "webpack",
-        "build:lib": "tsc -p tsconfig.lib.json",
-        "test": "npm run build && bash run-k6.sh"
+        "clean": "rimraf dist workspaces/*/dist workspaces/*/reports workspaces/*/generated",
+        "build": "tsc -p tsconfig.lib.json",
+        "k6-lib": "node dist/cli/index.js"
     },
     "devDependencies": {
         "@babel/core": "^7.27.1",

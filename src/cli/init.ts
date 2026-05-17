@@ -38,17 +38,17 @@ write(path.join(root, 'package.json'), JSON.stringify({
     version: '0.1.0',
     private: true,
     scripts: {
-        build: 'webpack',
         gen: 'k6-lib gen',
-        test: 'k6-lib run',
+        build: 'k6-lib build',
+        test: 'k6-lib build && k6-lib run dist/scenarios',
+        'test:smoke': 'k6-lib build && k6-lib run dist/scenarios/smoke',
+        'test:load': 'k6-lib build && k6-lib run dist/scenarios/load',
     },
     devDependencies: {
         '@htplus/k6-lib': '^0.1.0',
         '@types/k6': '^1.1.1',
         '@types/node': '^24.0.0',
         typescript: '^5.0.0',
-        webpack: '^5.99.0',
-        'webpack-cli': '^5.1.4',
     },
 }, null, 2));
 
@@ -149,8 +149,9 @@ console.log(`  cd ${projectName}`);
 console.log('  cp .env.example .env');
 console.log('  cp test-users.example.csv test-users.csv');
 console.log('  npm install');
-console.log('  npm run gen           # generate API client from openapi.yaml');
-console.log('  npm test scenarios/smoke/health.test.ts');
+console.log('  npm run gen          # codegen from openapi.yaml');
+console.log('  npm run build        # bundle scenarios -> dist/');
+console.log('  npm run test:smoke   # build + run smoke tests');
 
 /** Write content to a file, creating parent directories as needed. */
 function write(p: string, content: string): void {

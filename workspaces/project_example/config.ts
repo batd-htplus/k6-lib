@@ -13,12 +13,12 @@ import {
 } from '@htplus/k6-lib';
 
 export default defineProject({
-    /** Tên project — dùng làm tag `service` cho mọi request. */
+    /** Project name — used as the `service` tag on every request. */
     name: 'project_example',
 
     /**
-     * Base URL — có thể là string hoặc object nhiều môi trường.
-     * `selectBaseURL()` tự động chọn theo env `ENV`.
+     * Base URL — can be a string or a multi-environment object.
+     * `selectBaseURL()` automatically picks based on env `ENV`.
      */
     baseURL: {
         default: env('BASE_URL', 'http://localhost:3000'),
@@ -27,8 +27,8 @@ export default defineProject({
     },
 
     /**
-     * Auth providers — mỗi provider một tên, test file gọi `{ auth: 'user' }`.
-     * Có thể xài nhiều provider cùng lúc.
+     * Auth providers — each provider has a name; test files use `{ auth: 'user' }`.
+     * Multiple providers can be used simultaneously.
      */
     auth: {
         // ── Password login ──────────────────────────────────
@@ -70,13 +70,13 @@ export default defineProject({
     },
 
     /**
-     * Test users — dùng cho pool auth (pre-login).
-     * Mỗi user được auth provider gọi `body(u)` để login lấy token.
+     * Test users — used for the auth token pool (pre-login).
+     * Each user is passed through `body(u)` to acquire a token.
      */
     testUsers: csvUsers('./test-users.csv'),
 
     /**
-     * Test data — load sẵn, test file dùng `project.data.posts`.
+     * Test data — pre-loaded; test files access via `project.data.posts`.
      */
     testData: {
         posts: jsonData('./data/posts.json'),
@@ -94,9 +94,9 @@ export default defineProject({
     },
 
     /**
-     * VU config per test type — mỗi project custom theo sức chứa API.
-     * Test file xài: `const { vus, duration } = project.vu.smoke;`
-     * Không set → dùng mặc định (smoke=5·1m, load=80·10m, stress=200·15m, …).
+     * VU config per test type — each project customizes based on API capacity.
+     * Test files use: `const { vus, duration } = project.vu.smoke;`
+     * Falls back to defaults when unset (smoke=5·1m, load=80·10m, stress=200·15m, …).
      */
     vu: {
         smoke: { vus: 5, duration: '1m' },
@@ -107,21 +107,21 @@ export default defineProject({
         performance: { vus: 50, duration: '5m' },
     },
 
-    /** Tag mặc định gắn vào mọi request. */
+    /** Default tags attached to every request. */
     tags: {
         service: 'example',
         team: 'platform',
         project: env('PROJECT', 'dev'),
     },
 
-    /** Header mặc định gắn vào mọi request. */
+    /** Default headers attached to every request. */
     defaultHeaders: {
         'X-Client-Version': '1.0',
     },
 
-    /** Threshold preset — 'api', 'strict', 'relaxed', 'auth', 'ws' hoặc custom object. */
+    /** Threshold preset — 'api', 'strict', 'relaxed', 'auth', 'ws', or a custom object. */
     thresholds: 'api',
 
-    /** HTTP timeout mặc định. */
+    /** Default HTTP timeout. */
     defaultTimeout: '30s',
 });

@@ -4,6 +4,7 @@ dist/
 
 # Test artifacts
 results/
+reports/
 *.html
 *.log
 

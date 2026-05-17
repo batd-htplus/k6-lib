@@ -91,6 +91,16 @@ export class AuthRegistry {
         return entry.pool.getAllEntries();
     }
 
+    /** Returns the underlying RestClient (used by setup() for pre-login HTTP calls). */
+    getClient(): RestClient {
+        return this.client;
+    }
+
+    /** Returns the TokenPool for a given provider name, or undefined if none. */
+    getPool(name: string): TokenPool | undefined {
+        return this.entries.get(name)?.pool;
+    }
+
     /** Handles a 401 response — delegates to the provider's onUnauthorized handler if defined. */
     handleUnauthorized(name: string, user?: TestUser): Token | null {
         const entry = this.entries.get(name);

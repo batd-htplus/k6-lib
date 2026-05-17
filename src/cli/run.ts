@@ -92,7 +92,12 @@ let failed: string[] = [];
     for (const f of files) {
         const rel = path.relative(process.cwd(), f);
         const cleanRel = rel.replace(/^dist\//, '').replace(/\.test\.js$/, '');
-        const outDir = path.join('results', cleanRel + '_' + ts);
+        // Derive workspace-scoped report path: workspaces/<name>/reports/<type>/<name>_<ts>/
+        const parts = cleanRel.split(path.sep);
+        const wsIdx = parts.indexOf('workspaces');
+        const outDir = wsIdx !== -1 && wsIdx + 2 < parts.length
+            ? path.join(parts.slice(0, wsIdx + 2).join(path.sep), 'reports', ...parts.slice(wsIdx + 2)) + '_' + ts
+            : path.join('results', cleanRel + '_' + ts);
         fs.mkdirSync(outDir, { recursive: true });
 
         console.log(`\n━━━ Running ${rel} ━━━`);

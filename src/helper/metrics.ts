@@ -38,18 +38,5 @@ export const trackMetric = (
     }
 };
 
-/** A collection of named k6 metrics, typically including a duration Trend and an error Rate. */
-export interface MetricSet {
-    duration: Trend;
-    errorRate: Rate;
-    [key: string]: Trend | Rate | Counter | Gauge;
-}
 
-/** Creates a standard MetricSet with a duration Trend and error Rate, both prefixed with the given name. */
-export const createMetricSet = (prefix: string): MetricSet => {
-    return {
-        duration: createTrend(`${prefix}_duration_ms`),
-        errorRate: createRate(`${prefix}_errors`),
-    };
-};
 

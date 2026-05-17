@@ -81,6 +81,4 @@ export interface K6Summary {
 export type UnknownRecord = Record<string, unknown>;
 /** Generic record with string values. */
 export type StringRecord = Record<string, string>;
-/** Placeholder for an unknown value type. */
-export type UnknownValue = unknown;
 

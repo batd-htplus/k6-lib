@@ -1,421 +1,516 @@
-# k6-lib — Kiến trúc thư viện
+# Kiến trúc @htplus/k6-lib
 
-> Internal performance testing library 
+> Tài liệu này giải thích kiến trúc tổng thể, cách các module tương tác, lifecycle của một bài test, và lý do cho các quyết định thiết kế.
 
 ---
 
-## 1. Phạm vi
+## Mục lục
 
-| Có hỗ trợ | Không hỗ trợ |
-|-----------|---------------|
-| REST API (HTTP/HTTPS) | gRPC |
-| WebSocket (`k6/ws`) | GraphQL |
-| OpenAPI 3.x / Swagger 2.x → codegen endpoint | Browser test |
-| Smoke / Load / Stress / Spike / Soak / Volume / Capacity / Throughput | Chaos / fault injection |
-| Auth: password, OAuth2 (CC + password grant), API key, Basic, Bearer static, JWT refresh, HMAC, custom | SAML / OIDC interactive flow |
-| Output: HTML dashboard, JSON, CSV, JUnit XML, Prometheus remote write | k6 Cloud (chưa làm phase 1) |
+- [1. Tổng quan hệ thống](#1-t%E1%BB%95ng-quan-h%E1%BB%87-th%E1%BB%91ng)
+- [2. Module map](#2-module-map)
+- [3. Core: defineProject](#3-core-defineproject)
+- [4. Module client](#4-module-client)
+- [5. Module auth](#5-module-auth)
+- [6. Module data](#6-module-data)
+- [7. Module reporter](#7-module-reporter)
+- [8. CLI Architecture](#8-cli-architecture)
+- [9. Lifecycle chi tiết](#9-lifecycle-chi-ti%E1%BA%BFt)
+- [10. Auth flow chi tiết](#10-auth-flow-chi-ti%E1%BA%BFt)
+- [11. Dependencies](#11-dependencies)
+- [12. Quy ước đặt tên](#12-quy-%C6%B0%E1%BB%9Bc-%C4%91%E1%BA%B7t-t%C3%AAn)
 
-## 2. Kiến trúc tổng quan
+---
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    User Project                          │
-│  project.config.ts  ──►  defineProject({ ... })         │
-│  openapi.yaml       ──►  k6-lib gen ──► src/generated/  │
-│  scenarios/*.ts     ──►  import { api, ws, auth, data } │
-└────────────────────────────┬────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│                   @htplus/k6-lib                         │
-│                                                          │
-│  ┌────────────┐  ┌────────────┐  ┌──────────────────┐  │
-│  │  client/   │  │   auth/    │  │     data/        │  │
-│  │  rest      │  │  providers │  │  loaders + pool  │  │
-│  │  ws        │  │            │  │  SharedArray     │  │
-│  └────────────┘  └────────────┘  └──────────────────┘  │
-│                                                          │
-│  ┌────────────┐  ┌────────────┐  ┌──────────────────┐  │
-│  │ scenarios/ │  │  openapi/  │  │   reporter/      │  │
-│  │  builder   │  │  parser    │  │   summary, junit │  │
-│  │            │  │  codegen   │  │                  │  │
-│  └────────────┘  └────────────┘  └──────────────────┘  │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │                  defineProject()                    │ │
-│  │     factory gom config → trả về toolkit            │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │              cli/  (init, gen, run)                │ │
-│  └────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-                       k6 binary chạy
-```
+## 1. Tổng quan hệ thống
 
-## 3. Cấu trúc thư mục
+`@htplus/k6-lib` là thư viện chạy trên **k6 runtime** (JavaScript V8 engine), cung cấp lớp trừu tượng cho:
 
-### Bên trong package `@htplus/k6-lib`
+- **Giao tiếp HTTP/WebSocket** — wrapper quanh `k6/http` và `k6/ws`
+- **Authentication** — đăng ký nhiều provider, quản lý token pool, tự động gắn header
+- **Data loading** — load CSV, JSON, JSONL vào `SharedArray`
+- **Scenario** — preset config cho các loại test (smoke, load, stress,...)
+- **OpenAPI codegen** — sinh typed API client từ OpenAPI spec
+- **CLI** — init workspace, gen code, build bundle, run test
+
+![k6 architecture mapping](images/k6.mapping.png)
+
+### Giới hạn của k6 ảnh hưởng đến thiết kế
+
+| Giới hạn | Hệ quả | Giải pháp |
+|----------|--------|-----------|
+| Mỗi VU là V8 isolate riêng | Biến toàn cục được copy, không share mutable state | Token từ `setup()` truyền qua `default(data)` |
+| Init context không gọi được HTTP | Không thể login trong init | Login trong `setup()`, dùng `applySetupData()` |
+| `open()` resolve relative path theo file đang chạy | Data files phải ở cạnh bundled test | Build copy data files vào dist |
+| SharedArray hỗ trợ hạn chế | `.slice()` không hoạt động | Manual `for` loop |
+
+---
+
+## 2. Module map
+
+Dưới đây là sơ đồ package và quan hệ giữa các module:
 
 ```
 src/
-├── client/
-│   ├── rest-client.ts          # HTTP wrapper, retry, tag chuẩn
-│   ├── ws-client.ts            # WebSocket wrapper, metric tự động
+├── config/          # defineProject — trái tim hệ thống
+│   ├── define-project.ts
 │   └── types.ts
-├── auth/
-│   ├── index.ts                # export tất cả provider
-│   ├── provider.ts             # interface IAuthProvider
-│   ├── password.ts
-│   ├── oauth2-client-credentials.ts
-│   ├── oauth2-password.ts
-│   ├── api-key.ts
-│   ├── basic.ts
-│   ├── bearer-static.ts
-│   ├── jwt-refresh.ts
-│   ├── hmac.ts
-│   ├── custom.ts
-│   └── token-pool.ts           # pre-login pool + rotation
-├── data/
-│   ├── csv-loader.ts           # SharedArray + parser đúng
-│   ├── json-loader.ts          # SharedArray
-│   └── data-set.ts             # API .random() .next() .pick()
-├── scenarios/
-│   ├── scenario-builder.ts     # giữ nguyên từ code hiện tại
-│   └── presets.ts              # smoke/load/stress/spike/soak/...
-├── openapi/
-│   ├── parser.ts               # đọc OpenAPI 3.x + Swagger 2.x
-│   ├── codegen.ts              # sinh src/generated/api.ts
-│   └── validator.ts            # validate response theo schema
-├── config/
-│   ├── define-project.ts       # factory chính
-│   ├── thresholds.ts           # preset api/auth/strict/relaxed/ws
-│   └── env.ts
-├── reporter/
-│   ├── handle-summary.ts       # HTML dashboard hiện có
-│   ├── junit-xml.ts            # cho CI
-│   └── notifier.ts             # Slack/Teams hook (optional)
-├── cli/
-│   ├── init.ts                 # scaffold project mới
-│   ├── gen.ts                  # codegen từ openapi
-│   └── run.ts                  # wrap run-k6.sh
-└── index.ts
-```
-
-### Bên trong dự án dùng lib
-
-```
-my-service-k6/
-├── project.config.ts           # File config duy nhất
-├── openapi.yaml                # Copy/fetch từ backend
-├── .env                        # BASE_URL, credentials...
-├── test-users.csv              # Pool user cho login
-├── data/
-│   ├── posts.json              # Test data cho POST/PUT
-│   └── search-queries.json     # Query string mẫu
-├── src/generated/              # Auto-gen, không sửa tay
-│   ├── api.ts
+├── client/          # HTTP + WebSocket wrapper
+│   ├── rest-client.ts
+│   ├── ws-client.ts
 │   └── types.ts
-└── scenarios/
-    ├── smoke/
-    │   └── *.test.ts
-    ├── load/
-    │   └── *.test.ts
-    ├── stress/
-    ├── spike/
-    ├── soak/
-    └── ws/
+├── auth/            # Authentication providers
+│   ├── providers/   # password, oauth2, apikey, basic, bearer, jwt, hmac, custom
+│   ├── registry.ts
+│   └── token-pool.ts
+├── data/            # Data loaders
+│   ├── types.ts
+│   └── shared-data-set.ts
+├── scenarios/       # Scenario builder + presets
+│   ├── builder.ts
+│   └── presets/
+│       ├── smoke.ts
+│       ├── load.ts
+│       ├── stress.ts
+│       ├── spike.ts
+│       ├── soak.ts
+│       └── performance.ts
+├── reporter/        # Reporting
+│   └── handle-summary.ts
+├── codegen/         # OpenAPI code generation
+│   ├── parser.ts
+│   └── generator.ts
+├── helper/          # Utilities
+│   ├── common.ts
+│   ├── env.ts
+│   └── threshold.ts
+├── cli/             # CLI commands
+│   ├── index.ts
+│   ├── init.ts
+│   ├── gen.ts
+│   ├── build.ts
+│   ├── run.ts
+│   └── test.ts
+├── index.ts         # Public exports
+└── types.ts         # Shared types
 ```
 
-## 4. Core interfaces
+---
 
-Đây là contract của các module, dev không cần biết implementation:
+## 3. Core: defineProject
+
+### Vai trò
+
+`defineProject()` là điểm vào duy nhất. Nó nhận `ProjectConfig`, kiểm tra tính hợp lệ, khởi tạo tất cả module, và trả về `ProjectToolkit` — object được dùng trong mọi file test.
+
+### Input / Output
+
+```
+Input:  config (ProjectConfig)
+        ├── name: string
+        ├── baseURL: { default: string, [env: string]: string }
+        ├── auth: { [name: string]: AuthProviderConfig }
+        ├── testUsers: User[] | DataLoader
+        ├── testData: { [name: string]: DataLoader }
+        ├── thresholds: ThresholdPreset | Threshold[]
+        ├── defaultTimeout: string
+        └── websocket?: { ... }
+
+Xử lý:
+        1. Kiểm tra config (validate)
+        2. Tạo RestClient với baseURL
+        3. Tạo WsClient nếu có websocket config
+        4. Duyệt auth providers → AuthRegistry
+           - Mỗi provider → gọi register(name, provider, pool?)
+        5. Duyệt testData → SharedDataSet
+        6. Gắn auth applier vào RestClient
+        7. Resolve thresholds
+
+Output: toolkit (ProjectToolkit)
+        ├── http: RestClient
+        ├── ws: WsClient (undefined nếu không config)
+        ├── auth: AuthRegistry
+        ├── data: { [name: string]: SharedDataSet }
+        ├── check(res, expectedStatus): boolean
+        ├── extract(res, path): unknown
+        ├── setup(): SetupData  (gọi trong k6 setup())
+        └── applySetupData(data): void (gọi trong default())
+```
+
+### Toolkit methods quan trọng
+
+#### `setup()` → `runSetup()`
+
+1. Duyệt tất cả provider trong registry
+2. Gọi `buildPoolEntries()` — login từng user qua HTTP, lưu token
+3. Trả về `SetupData { pools: { [providerName]: string[] } }`
+
+#### `applySetupData(data)`
+
+1. Nhận `SetupData` từ `default(data)`
+2. Duyệt từng pool trong `data.pools`
+3. Gọi `TokenPool.load(entries)` để copy token vào pool local của VU
+
+---
+
+## 4. Module client
+
+### RestClient
+
+Wrapper quanh `k6/http`, cung cấp interface typed cho HTTP methods.
+
+```
+RestClient (khởi tạo với baseURL + options)
+    ├── .get<T>(path, params?, options?)
+    ├── .post<T>(path, body?, options?)
+    ├── .put<T>(path, body?, options?)
+    ├── .patch<T>(path, body?, options?)
+    ├── .del<T>(path, body?, options?)
+    ├── .head<T>(path, params?, options?)
+    ├── .options<T>(path, body?, options?)
+    ├── .batch(requests)
+    └── .raw(request)  — cho trường hợp đặc biệt
+```
+
+**Cơ chế auth tự động:**
+
+Khi `options.auth` được truyền, `RestClient` gọi `authApplier.apply(headers, params, authName)`. AuthApplier được `defineProject` gắn vào khi khởi tạo.
+
+**Retry:**
+
+Retry với exponential backoff khi request thất bại (status >= 500 hoặc network error). Số lần retry và delay configurable qua options.
+
+**Tagging:**
+
+Mỗi request được gắn tags: `service`, `endpoint`, `method`, `env` — dùng cho metric filtering trong k6.
+
+### WsClient
+
+Wrapper quanh `k6/ws`, dùng cho WebSocket test.
+
+```
+WsClient
+    ├── .connect(url, params?, options?)
+    └── .send(data)
+```
+
+Tự động gắn auth token vào connection (header hoặc query parameter).
+
+---
+
+## 5. Module auth
+
+### AuthRegistry
+
+Quản lý nhiều auth provider trong một project.
+
+```
+AuthRegistry
+    ├── register(name, provider, pool?)
+    ├── get(name): ProviderEntry
+    ├── getPool(name): TokenPool | undefined
+    ├── getClient(name): IAuthProvider
+    └── apply(ctx, authName): boolean
+```
+
+- `register()`: gọi khi khởi tạo project, lưu provider + pool vào Map
+- `apply()`: tìm provider theo tên, lấy token từ pool, gắn vào request headers
+- `getPool()` / `getClient()`: truy cập trực tiếp cho trường hợp cần custom handling
+
+### TokenPool
+
+Pre-login token pool, quản lý vòng đời token.
+
+```
+TokenPool
+    ├── buildPoolEntries(client, provider, users): Promise<TokenEntry[]>
+    │   └── Gọi trong setup(): HTTP request → login → token
+    ├── load(entries: TokenEntry[]): void
+    │   └── Gọi trong applySetupData(): copy token vào pool local
+    ├── pick(): TokenEntry
+    │   └── Round-robin hoặc random theo __VU
+    └── getAllEntries(): TokenEntry[]
+```
+
+**Cơ chế pick:**
+
+- `rotation: 'round-robin'` — dùng counter tăng dần
+- `rotation: 'random'` — dùng `__VU` để lấy index
+
+### IAuthProvider interface
+
+Tất cả provider implement interface này:
 
 ```typescript
-// client
-interface IRestClient {
-  get<T>(path: string, opts?: RequestOptions): Response<T>;
-  post<T>(path: string, body?: unknown, opts?: RequestOptions): Response<T>;
-  put<T>(path: string, body?: unknown, opts?: RequestOptions): Response<T>;
-  patch<T>(path: string, body?: unknown, opts?: RequestOptions): Response<T>;
-  del<T>(path: string, body?: unknown, opts?: RequestOptions): Response<T>;
-  batch(requests: BatchRequest[]): Response[];
-}
-
-interface IWsClient {
-  connect(path: string, opts: WsOptions, handler: WsHandler): void;
-}
-
-// auth
 interface IAuthProvider {
-  name: string;
-  acquireToken(client: IRestClient, user?: TestUser): Token;
-  applyToRequest(request: Request, token: Token): Request;
-  refresh?(client: IRestClient, token: Token): Token;
-  onUnauthorized?(client: IRestClient, user?: TestUser): Token;
-}
-
-// data
-interface IDataSet<T> {
-  all(): readonly T[];
-  random(): T;
-  next(): T;                    // round-robin theo __VU + __ITER
-  pickByVU(): T;                // __VU % size
-  size: number;
-}
-
-// project
-interface ProjectToolkit {
-  api: GeneratedApi;             // từ openapi codegen
-  ws: IWsClient;
-  auth: AuthRegistry;            // single hoặc multi
-  data: Record<string, IDataSet<unknown>>;
-  check: (res: Response, expected: number | CheckSpec) => boolean;
-  extract: (res: Response, jsonPath: string) => unknown;
-  env: (key: string, defaultValue?: string) => string;
+    acquireToken(client: RestClient, user?: User): TokenEntry;
+    applyToRequest(ctx: AuthContext, token: TokenEntry): void;
+    refresh?(client: RestClient, token: TokenEntry, user?: User): TokenEntry;
+    isExpired?(token: TokenEntry): boolean;
 }
 ```
 
-## 5. Project lifecycle
+---
 
-### Bước 1 — Init
+## 6. Module data
 
-```bash
-npx @htplus/k6-lib init order-service-k6
+### SharedDataSet
+
+Wrapper quanh `k6/data/SharedArray` — data được load trong init context và share giữa các VU.
+
+```
+SharedDataSet<T>
+    ├── all(): T[]             — tất cả entries
+    ├── random(): T            — random entry
+    ├── next(): T              — round-robin
+    ├── pickByVU(): T          — theo index = __VU % length
+    └── length: number
 ```
 
-CLI tạo: `project.config.ts` (template), `.env.example`, `openapi.yaml` (placeholder), `scenarios/smoke/health.test.ts` (1 file mẫu), `package.json`.
+### Data loader types
 
-### Bước 2 — Cấu hình
+| Loader | Nguồn | Output |
+|--------|-------|--------|
+| `csvUsers(path)` | File CSV | `User[]` (type `{ email, password, role }`) |
+| `csvData<T>(path, mapper?)` | File CSV | `T[]` (generic, mapper optional) |
+| `jsonData<T>(path)` | File JSON | `T[]` |
+| `jsonlData<T>(path)` | File JSONL | `T[]` |
+| `inlineData<T>(arr)` | Array literal | `T[]` |
+
+---
+
+## 7. Module reporter
+
+### handleSummary
+
+Callback được k6 gọi khi test kết thúc. Sinh báo cáo ở nhiều định dạng.
+
+```
+handleSummary(data)
+    ├── stdout: text summary
+    ├── K6_SUMMARY_DIR/result.html: HTML dashboard
+    ├── K6_SUMMARY_DIR/result.json: raw metrics
+    └── K6_SUMMARY_DIR/junit.xml: JUnit for CI
+```
+
+Output directory configurable qua env `K6_SUMMARY_DIR`. Nếu không set, chỉ xuất stdout.
+
+### Web dashboard (k6 built-in)
+
+k6 1.0.0-rc1 có sẵn web dashboard. Kích hoạt bằng environment variables:
+
+```
+K6_WEB_DASHBOARD=true
+K6_WEB_DASHBOARD_PERIOD=1s     # Cần cho test ngắn (< 30s)
+K6_WEB_DASHBOARD_EXPORT=report.html  # Export HTML
+```
+
+Web dashboard export là file HTML ~160KB với biểu đồ, ưu tiên dùng hơn handleSummary HTML.
+
+---
+
+## 8. CLI Architecture
+
+### Entry point
+
+`k6-lib <command> [args] [options]`
+
+```
+k6-lib <command>
+    │
+    ├── init <name>
+    │   └── Scaffold workspace: config.ts, .env, test-users.csv, smoke/
+    │
+    ├── gen [--spec=openapi.yaml]
+    │   └── Parse OpenAPI → sinh generated/api.ts (typed client)
+    │
+    ├── build [workspace]
+    │   ├── auto-discover *.test.ts trong workspace
+    │   ├── webpack bundle từng file → dist/<type>/<name>.test.js
+    │   └── copy data files (CSV, JSON, YAML) vào dist/
+    │
+    ├── run <target>
+    │   ├── discover *.test.js
+    │   ├── --vus, --duration, --type, --env pass-through
+    │   └── K6_WEB_DASHBOARD env tự động
+    │
+    └── test <workspace> [type]
+        ├── gen → build → run một lệnh
+        ├── --skip-gen, --skip-build
+        └── pass-through flags cho k6
+```
+
+### Build pipeline
+
+```
+*.test.ts (source)
+    │
+    ▼
+webpack (config built in RAM)
+    ├── entry: mỗi file test
+    ├── babel-loader + @babel/preset-env + @babel/preset-typescript
+    └── externals: k6, k6/http, k6/ws, k6/data, ...
+    │
+    ▼
+dist/<type>/<name>.test.js
+    │
+    ▼
+Copy data files: *.csv, *.json, *.yaml, *.yml
+    └── dist/<type>/ (cùng thư mục với test)
+```
+
+Data files được copy vào dist vì `open()` trong k6 resolve relative path theo file đang chạy (không phải CWD).
+
+---
+
+## 9. Lifecycle chi tiết
+
+### Phase 1: Init context (k6 load script)
 
 ```typescript
-// project.config.ts
-import {
-  defineProject,
-  passwordAuth,
-  apiKeyAuth,
-  csvUsers,
-  jsonData,
-} from '@htplus/k6-lib';
-
-export default defineProject({
-  name: 'order-service',
-  baseURL: {
-    default: 'http://localhost:3000',
-    staging: 'https://staging.api.htplus.software',
-    prod:    'https://api.htplus.software',
-  },
-  openapi: './openapi.yaml',
-
-  auth: {
-    user: passwordAuth({
-      loginPath: '/auth/login',
-      body: (u) => ({ email: u.email, password: u.password }),
-      extractToken: 'data.token',
-      extractRefreshToken: 'data.refresh_token',
-      refreshPath: '/auth/refresh',
-      pool: { size: 100, rotation: 'round-robin' },
-    }),
-    internal: apiKeyAuth({
-      key: env('INTERNAL_API_KEY'),
-      location: 'header',
-      name: 'X-API-Key',
-    }),
-  },
-
-  testUsers: csvUsers('./test-users.csv'),
-  testData: {
-    posts: jsonData('./data/posts.json'),
-    queries: jsonData('./data/search-queries.json'),
-  },
-
-  websocket: {
-    path: '/ws',
-    authMode: 'query',
-    queryName: 'token',
-  },
-
-  tags: { service: 'order-svc' },
-  thresholds: 'api',                  // preset, có thể override
-  defaultTimeout: '30s',
-  reuseConnections: true,
-});
+// Chạy 1 lần khi k6 load script
+import project from '../config';          // defineProject khởi tạo registry rỗng
+export const options = ScenarioBuilder... // build options
+export function setup() { ... }           // setup function
 ```
 
-### Bước 3 — Codegen từ OpenAPI
+- `defineProject()` khởi tạo toolkit
+- Mỗi V8 isolate nhận bản copy riêng của tất cả global objects
+- Token pool rỗng ở phase này (chưa login)
 
-```bash
-npx k6-lib gen
-```
-
-Đọc `openapi.yaml` → sinh `src/generated/api.ts`:
+### Phase 2: Setup
 
 ```typescript
-// AUTO-GENERATED — DO NOT EDIT
-export const api = {
-  posts: {
-    list:   (query?: PostsListQuery, opts?: CallOpts) => client.get('/posts', { params: query, ...opts }),
-    get:    (id: number, opts?: CallOpts)              => client.get(`/posts/${id}`, opts),
-    create: (body: CreatePostBody, opts?: CallOpts)    => client.post('/posts', body, opts),
-    update: (id: number, body: UpdatePostBody, opts?: CallOpts) => client.put(`/posts/${id}`, body, opts),
-    delete: (id: number, opts?: CallOpts)              => client.del(`/posts/${id}`, opts),
-  },
-  users: { /* ... */ },
-};
-```
-
-Kèm types đầy đủ → IDE auto-complete.
-
-### Bước 4 — Viết test
-
-**Smoke 1 endpoint:**
-
-```typescript
-// scenarios/smoke/list-posts.test.ts
-import project from '../../project.config';
-import { ScenarioBuilder } from '@htplus/k6-lib';
-export { handleSummary } from '@htplus/k6-lib/reporter';
-
-const { api } = project;
-
-export const options = ScenarioBuilder.smoke(5, '1m').build();
-
-export default function () {
-  const res = api.posts.list({ limit: 20 }, { auth: 'user' });
-  project.check(res, 200);
+export function setup() {
+    return project.setup();   // → runSetup()
 }
 ```
 
-**Load CRUD flow:**
+```
+runSetup():
+    1. Duyệt auth providers từ registry
+    2. Với mỗi provider:
+       a. Gọi buildPoolEntries(client, provider, users)
+       b. Login từng user: POST /auth/login → token
+       c. Trả về TokenEntry[]
+    3. Đóng gói vào SetupData { pools: { user: [...token] } }
+```
+
+- Đây là phase DUY NHẤT có thể gọi HTTP
+- Login N user, lưu token entries
+
+### Phase 3: VU execution
 
 ```typescript
-// scenarios/load/posts-crud.test.ts
-import project from '../../project.config';
-import { ScenarioBuilder, group } from '@htplus/k6-lib';
-export { handleSummary } from '@htplus/k6-lib/reporter';
-
-const { api, data, check, extract } = project;
-
-export const options = ScenarioBuilder.load(80, '10m').build();
-
-export default function () {
-  group('create-read-update-delete', () => {
-    const body = data.posts.random();
-    const created = api.posts.create(body, { auth: 'user' });
-    const id = extract(created, 'data.id') as number;
-    if (!id) return;
-    api.posts.get(id, { auth: 'user' });
-    api.posts.update(id, { ...body, title: 'updated' }, { auth: 'user' });
-    api.posts.delete(id, { auth: 'user' });
-  });
+export default function (data) {
+    project.applySetupData(data);   // nạp token vào pool local
+    project.http.post('/posts', body, { auth: 'user' });
 }
 ```
 
-**WebSocket load:**
-
-```typescript
-// scenarios/ws/chat-load.test.ts
-import project from '../../project.config';
-import { ScenarioBuilder } from '@htplus/k6-lib';
-
-export const options = ScenarioBuilder.load(200, '5m').build();
-
-export default function () {
-  project.ws.connect('/chat', { auth: 'user' }, (socket) => {
-    socket.onOpen(() => socket.sendJSON({ type: 'subscribe', room: 'general' }));
-    socket.onMessage(() => { /* ws_msg_rtt_ms tự track */ });
-    socket.sendEvery('1s', () => ({ type: 'ping', t: Date.now() }));
-    socket.waitFor('30s');
-  });
-}
+```
+default(data):
+    1. applySetupData(data):
+       a. Duyệt data.pools
+       b. Mỗi pool → pool.load(entries)
+       c. TokenPool local có entries sẵn sàng
+    2. project.http.post(..., { auth: 'user' }):
+       a. RestClient.buildHeaders() gọi authApplier
+       b. AuthRegistry.apply(ctx, 'user')
+       c. TokenPool.pick() → token
+       d. IAuthProvider.applyToRequest(ctx, token)
+       e. Header 'Authorization: Bearer <token>' được gắn
+       f. HTTP request được gửi
 ```
 
-### Bước 5 — Chạy
-
-```bash
-npm run test scenarios/load/posts-crud.test.ts
-npm run test scenarios/load                    # chạy tất cả test trong folder
-npm run test scenarios/                        # chạy tất cả
-ENV=staging npm run test scenarios/smoke       # đổi env
-```
-
-## 7. Auth providers — bảng quyết định
-
-| Provider | Khi nào dùng |
-|----------|--------------|
-| `passwordAuth` | Hệ thống có email/username + password, trả JWT. **Phổ biến nhất.** |
-| `oauth2ClientCredentials` | Service-to-service, có client_id/client_secret. |
-| `oauth2Password` | Legacy OAuth2 resource owner password grant. |
-| `apiKeyAuth` | Public API hoặc internal API key. |
-| `basicAuth` | Hệ thống cũ. |
-| `bearerStaticAuth` | Test internal/staging, đã có token cố định. |
-| `jwtRefreshAuth` | JWT có refresh token, cần auto-refresh khi 401 trong soak test. |
-| `hmacAuth` | Payment/banking, request signing. |
-| `customAuth` | Flow đặc thù không khớp template — escape hatch. |
-
-Tất cả implement chung `IAuthProvider` → có thể mix trong cùng `defineProject({ auth: { user, admin, internal } })`.
-
-## 8. Tối ưu hiệu năng — mặc định bật sẵn
-
-Lib enforce sẵn các best practice, dev không cần biết:
-
-| Tối ưu | Cơ chế |
-|--------|--------|
-| Test data load 1 lần share giữa các VU | `SharedArray` cho mọi CSV/JSON |
-| Token pool pre-login | `setup()` login N user, share token qua `SharedArray` |
-| Connection reuse | `noConnectionReuse: false` mặc định |
-| Tag chuẩn cho mọi request | `{ service, endpoint, scenario, env }` auto-attach |
-| Discard body khi throughput test | `discardResponseBodies: true` khi dùng `.throughput()` |
-| Batch request | `client.batch([...])` wrap `http.batch()` |
-| Auto-refresh token | provider tự bắt 401 → refresh → retry |
-| Graceful stop | mỗi scenario có `gracefulStop` mặc định |
-
-## 9. Reporting
-
-Mặc định mỗi lần test sinh:
+### Phase 4: Teardown + Report
 
 ```
-results/<service>/<scenario>/<test-name>_<timestamp>/
-├── dashboard-report.html      # k6 web dashboard, mở browser xem
-├── summary.json               # tổng quan
-├── result.json                # raw metric
-├── result.csv                 # cho Excel
-└── junit.xml                  # cho CI parse
+Teardown (nếu có): k6 gọi teardown()
+Report: handleSummary(data) → stdout + file export
 ```
 
-Optional output (config trong `defineProject`):
-- Prometheus remote write → Grafana
-- Slack/Teams webhook khi threshold fail
+---
 
-## 10. Threshold preset
+## 10. Auth flow chi tiết
 
-Mặc định lib có 5 preset, dev chọn 1 hoặc compose:
-
-| Preset | Khi nào dùng |
-|--------|--------------|
-| `api` | API thường (p95 < 1s, error < 1%) |
-| `auth` | Endpoint auth (p95 < 1s, request < 500ms) |
-| `strict` | API quan trọng (p95 < 500ms, error < 0.1%) |
-| `relaxed` | Stress test (p95 < 2s, error < 5%) |
-| `ws` | WebSocket (connect < 500ms, RTT < 200ms) |
-
-Compose:
-
-```typescript
-thresholds: createThresholds(
-  { 'api_duration_ms': ['p(95)<800'] },   // custom
-  CommonThresholdPresets.api               // base
-)
-```
-
-## 11. CLI commands
+### Request flow
 
 ```
-k6-lib init <name>           # Tạo project mới từ template
-k6-lib gen [--spec=...]      # Sinh code từ OpenAPI
-k6-lib run <path>            # Chạy test (wrap k6 run + setup output)
-k6-lib run <folder>          # Chạy tất cả test trong folder
-k6-lib validate              # Validate project.config.ts + openapi.yaml
+VU: project.http.post('/posts', { title: 'test' }, { auth: 'user' })
+                     │
+                     ▼
+    1. RestClient.post()
+        ├── Tạo request config với URL, body, params
+        ├── Gọi buildHeaders(params, options)
+        │   ├── options.auth = 'user'
+        │   └── authApplier.apply(headers, params, 'user')
+        │       │
+        │       ▼
+        │   2. AuthRegistry.apply(ctx, 'user')
+        │       ├── entries.get('user') → ProviderEntry
+        │       │   ├── provider: PasswordAuthProvider
+        │       │   └── pool: TokenPool (loaded từ setupData)
+        │       ├── getToken('user')
+        │       │   └── pool.pick()
+        │       │       ├── entries.length > 0 ?
+        │       │       ├── rotation === 'round-robin'
+        │       │       │   └── index = counter++ % length
+        │       │       └── return token
+        │       ├── provider.applyToRequest(ctx, token)
+        │       │   └── ctx.headers['Authorization'] = 'Bearer <token>'
+        │       └── return true
+        │
+        ├── 3. auth headers đã được gắn
+        └── 4. HTTP.request(method, url, body, params)
+                     │
+                     ▼
+             Request được gửi với Authorization header
 ```
+
+### Vì sao cần applySetupData?
+
+Đây là vấn đề cốt lõi của k6 architecture:
+
+1. k6 tạo **V8 isolate riêng** cho mỗi VU
+2. Mỗi isolate có bản copy riêng của tất cả objects khởi tạo trong init context
+3. `setup()` chạy trong **setup isolate** — login và lưu token vào pool của isolate đó
+4. VU isolate nhận được **bản copy** của AuthRegistry, nhưng pool bên trong vẫn rỗng
+
+Giải pháp: `applySetupData()` là cầu nối.
+- `setup()` trả về `SetupData` (plain object: pools mapping provider → token array)
+- k6 truyền object này vào `default(data)` cho mỗi VU
+- `applySetupData()` ở đầu `default()` đọc `data.pools` và gọi `pool.load(entries)` để copy token vào pool local
+
+## 11. Dependencies
+
+### Runtime
+
+| Package | Dùng cho |
+|---------|----------|
+| `k6` | Runtime environment (type definitions) |
+| `js-yaml` | Parse YAML data files |
+| `dotenv` | Load `.env` file |
+
+### Build
+
+| Package | Dùng cho |
+|---------|----------|
+| `typescript` | TypeScript compiler |
+| `webpack` | Bundle test files |
+| `babel-loader` | Transpile JS trong webpack |
+| `@babel/preset-env` | Target ES modules cho k6 |
+| `@babel/preset-typescript` | TypeScript → JS trong webpack |
+
+## 12. Quy ước đặt tên
+
+| Thành phần | Quy tắc |
+|------------|---------|
+| Workspace | `workspaces/<tên-dự-án>/` |
+| Config | `config.ts` (export default defineProject) |
+| Test files | `<folder>/<name>.test.ts` |
+| Test types | `smoke/`, `load/`, `stress/`, `spike/`, `soak/`, `performance/` |
+| OpenAPI spec | `openapi.yaml` hoặc `openapi.json` |
+| Generated | `generated/api.ts` |
+| Data files | `data/*.csv`, `data/*.json` |
+| Bundled output | `dist/<type>/<name>.test.js` |
+| Report output | `reports/<type>/<name>_<timestamp>/` |
